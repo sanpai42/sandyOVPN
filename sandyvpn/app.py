@@ -8,6 +8,8 @@ from datetime import datetime
 from tkinter import messagebox, ttk
 
 from sandyvpn.glow import TopBanner
+from sandyvpn.icon import apply_window_icon
+from sandyvpn.import_dialog import ConfigImportDialog
 from sandyvpn.mascot import GingerCatMascot
 from sandyvpn.storage import (
     Credentials,
@@ -55,6 +57,7 @@ class SandyVPNApp:
         self._connected_since: datetime | None = None
 
         apply_theme(root)
+        self._window_icon = apply_window_icon(root)
         self._build_ui()
         self._set_busy(False)
         self._load_saved_credentials()
@@ -80,14 +83,17 @@ class SandyVPNApp:
         ttk.Label(self.setup_frame, text="Auth password").grid(row=0, column=2, sticky=tk.W, pady=(0, 4))
 
         self.config_var = tk.StringVar()
+        self.config_var.trace_add("write", self._on_config_var_changed)
         self.config_entry = ttk.Entry(self.setup_frame, textvariable=self.config_var, width=18)
         self.config_entry.grid(row=1, column=0, sticky=tk.EW, padx=(0, 8), pady=field_pad)
 
         self.username_var = tk.StringVar()
+        self.username_var.trace_add("write", self._on_setup_field_changed)
         self.username_entry = ttk.Entry(self.setup_frame, textvariable=self.username_var, width=18)
         self.username_entry.grid(row=1, column=1, sticky=tk.EW, padx=(0, 8), pady=field_pad)
 
         self.password_var = tk.StringVar()
+        self.password_var.trace_add("write", self._on_setup_field_changed)
         self.password_entry = ttk.Entry(self.setup_frame, textvariable=self.password_var, show="•", width=18)
         self.password_entry.grid(row=1, column=2, sticky=tk.EW, pady=field_pad)
         self.password_entry.bind("<FocusIn>", self._on_password_focus_in)
@@ -96,16 +102,32 @@ class SandyVPNApp:
         setup_btn_row = ttk.Frame(self.setup_frame)
         setup_btn_row.grid(row=2, column=0, columnspan=3, sticky=tk.EW, pady=(0, 12))
 
+        connect_col = ttk.Frame(setup_btn_row)
+        connect_col.pack(side=tk.LEFT, anchor=tk.N)
+
         self.connect_btn = ttk.Button(
-            setup_btn_row, text="Connect", style="Accent.TButton", command=self._on_connect
+            connect_col, text="Connect", style="Accent.TButton", command=self._on_connect
         )
-        self.connect_btn.pack(side=tk.LEFT, padx=(0, 8))
+        self.connect_btn.pack(anchor=tk.W)
 
-        self.save_btn = ttk.Button(setup_btn_row, text="Save credentials", command=self._on_save)
-        self.save_btn.pack(side=tk.LEFT, padx=(0, 8))
+        self.connect_hint_var = tk.StringVar()
+        self.connect_hint = ttk.Label(
+            connect_col, textvariable=self.connect_hint_var, style="Hint.TLabel", wraplength=220
+        )
+        self.connect_hint.pack(anchor=tk.W, pady=(1, 0))
 
-        self.clear_btn = ttk.Button(setup_btn_row, text="Clear saved", command=self._on_clear)
-        self.clear_btn.pack(side=tk.LEFT)
+        right_btn_row = ttk.Frame(setup_btn_row)
+        right_btn_row.pack(side=tk.RIGHT)
+        self.right_btn_row = right_btn_row
+
+        self.import_btn = ttk.Button(right_btn_row, text="Import ovpn file", command=self._on_import_config)
+        self.import_btn.pack(side=tk.RIGHT)
+
+        self.clear_btn = ttk.Button(right_btn_row, text="Clear saved config", command=self._on_clear)
+        self.clear_btn.pack(side=tk.RIGHT, padx=(8, 0))
+
+        self.save_btn = ttk.Button(right_btn_row, text="Save credentials", command=self._on_save)
+        self.save_btn.pack(side=tk.RIGHT, padx=(8, 0))
 
         self.status_frame = ttk.LabelFrame(self.frame, text="VPN status", padding=8)
         self.status_frame.grid(row=2, column=0, sticky=tk.NSEW, pady=(0, 12))
@@ -144,6 +166,33 @@ class SandyVPNApp:
         self.status_frame.rowconfigure(1, weight=1)
         self._update_credential_buttons()
 
+    def _connect_allowed(self) -> bool:
+        return credentials_exist() and has_stored_password()
+
+    def _connect_disabled_reason(self) -> str | None:
+        if self._connected:
+            return None
+        if self._busy:
+            return "Please wait…"
+        if self._connect_allowed():
+            return None
+        if not self.config_var.get().strip():
+            return "Enter a config name, then save credentials to connect."
+        if not self.username_var.get().strip():
+            return "Enter a username, then save credentials to connect."
+        if not self._get_typed_password() and not has_stored_password():
+            return "Enter a password, then save credentials to connect."
+        return "Save credentials to connect."
+
+    def _update_connect_button(self) -> None:
+        reason = self._connect_disabled_reason()
+        if self._connected or self._busy or reason:
+            self.connect_btn.config(state=tk.DISABLED)
+            self.connect_hint_var.set(reason or "")
+        else:
+            self.connect_btn.config(state=tk.NORMAL)
+            self.connect_hint_var.set("")
+
     def _password_is_placeholder(self) -> bool:
         return self.password_var.get() == PASSWORD_PLACEHOLDER
 
@@ -173,13 +222,29 @@ class SandyVPNApp:
         if self._password_is_placeholder():
             self._clear_password_field()
 
+    def _on_config_var_changed(self, *_args: object) -> None:
+        self._update_import_button()
+        self._update_connect_button()
+
+    def _on_setup_field_changed(self, *_args: object) -> None:
+        self._update_connect_button()
+
     def _update_credential_buttons(self) -> None:
         if credentials_exist():
             self.save_btn.pack_forget()
-            self.clear_btn.pack(side=tk.LEFT)
+            self.clear_btn.pack(in_=self.right_btn_row, side=tk.RIGHT, padx=(8, 0))
         else:
             self.clear_btn.pack_forget()
-            self.save_btn.pack(side=tk.LEFT, padx=(0, 8))
+            self.save_btn.pack(in_=self.right_btn_row, side=tk.RIGHT, padx=(8, 0))
+        self._update_import_button()
+        self._update_connect_button()
+
+    def _update_import_button(self) -> None:
+        show = not self._connected and not self.config_var.get().strip()
+        if show:
+            self.import_btn.pack(in_=self.right_btn_row, side=tk.RIGHT)
+        else:
+            self.import_btn.pack_forget()
 
     def _load_saved_credentials(self) -> None:
         profile = load_profile()
@@ -190,7 +255,7 @@ class SandyVPNApp:
         self._purge_password_from_ui()
         self._update_credential_buttons()
         if has_stored_password():
-            self._append_output("Loaded saved profile. Password stays encrypted until connect.\n")
+            self._append_output("Loaded saved profile. \n(Password stays encrypted at all times.)\n")
         else:
             self._append_output("Loaded saved profile.\n")
 
@@ -209,16 +274,13 @@ class SandyVPNApp:
         if typed_password:
             password = typed_password
             self._purge_password_from_ui()
-            if not credentials_exist():
-                save_credentials(Credentials(config_name, username, password))
-                self._update_credential_buttons()
             return config_name, username, password
 
         password = unlock_password()
         if password is None:
             messagebox.showwarning(
                 "Missing password",
-                "Enter a password, or save credentials first.",
+                "Save credentials first, then connect.",
             )
             return None
         return config_name, username, password
@@ -257,6 +319,22 @@ class SandyVPNApp:
 
         threading.Thread(target=run, daemon=True).start()
 
+    def _on_import_config(self) -> None:
+        if self._busy or self._connected:
+            return
+
+        def on_imported(config_name: str) -> None:
+            self.config_var.set(config_name)
+            self._append_output(
+                f"Imported config '{config_name}'. Enter username and password, then save credentials.\n"
+            )
+
+        ConfigImportDialog(
+            self.root,
+            on_imported=on_imported,
+            on_output=self._append_output,
+        )
+
     def _on_save(self) -> None:
         creds = self._resolve_save_auth()
         if creds is None:
@@ -277,7 +355,7 @@ class SandyVPNApp:
         self._append_output("Saved credentials cleared.\n")
 
     def _on_connect(self) -> None:
-        if self._busy:
+        if self._busy or not self._connect_allowed():
             return
         auth = self._resolve_connect_auth()
         if auth is None:
@@ -407,6 +485,7 @@ class SandyVPNApp:
         self._refresh_status()
         self._schedule_status_poll()
         self._set_busy(False)
+        self._update_import_button()
 
     def _enter_disconnected_state(self) -> None:
         self._connected = False
@@ -457,23 +536,27 @@ class SandyVPNApp:
         self.config_entry.config(state=state)
         self.username_entry.config(state=state)
         self.password_entry.config(state=state)
+        self.import_btn.config(state=state)
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
         if busy:
-            self.connect_btn.config(state=tk.DISABLED)
             self.disconnect_btn.config(state=tk.DISABLED)
             self.reconnect_btn.config(state=tk.DISABLED)
+            self.import_btn.config(state=tk.DISABLED)
+            self._update_connect_button()
             return
 
         if self._connected:
-            self.connect_btn.config(state=tk.DISABLED)
             self.disconnect_btn.config(state=tk.NORMAL)
             self.reconnect_btn.config(state=tk.NORMAL)
+            self.import_btn.config(state=tk.DISABLED)
+            self._update_connect_button()
         else:
-            self.connect_btn.config(state=tk.NORMAL)
+            self._update_connect_button()
             self.disconnect_btn.config(state=tk.DISABLED)
             self.reconnect_btn.config(state=tk.DISABLED)
+            self.import_btn.config(state=tk.NORMAL)
 
     def _schedule_status_poll(self) -> None:
         self._cancel_status_poll()
@@ -534,7 +617,12 @@ class SandyVPNApp:
 
 
 def main() -> None:
-    root = tk.Tk()
+    try:
+        from tkinterdnd2 import TkinterDnD
+
+        root = TkinterDnD.Tk()
+    except ImportError:
+        root = tk.Tk()
     SandyVPNApp(root)
     root.mainloop()
 

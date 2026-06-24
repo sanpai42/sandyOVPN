@@ -36,29 +36,24 @@ Dark UI, orange accents, a soft green glow when you’re connected, and a mascot
 ## Requirements
 
 - Linux with [OpenVPN 3](https://openvpn.net/community-docs/openvpn-client-for-linux.html) installed (`openvpn3` on your `PATH`)
-- A configuration profile already imported (`openvpn3 configs-list`)
-- Python 3.10+
-- `python3-tk` and the `cryptography` package
+- Python 3.10+ (auto installed if missing)
 
 ```bash
 sudo apt install python3 python3-tk python3-venv
 ```
 
-## Install
+# Install
 
 ```bash
-./install.sh
+bash ./install.sh
 ```
 
 That sets up a virtual environment, installs dependencies, and adds **SandyVPN** to your application menu and Desktop.
 
 ## Run
 
-Open **SandyVPN** from your menu, or:
+Open **SandyOVPN** from your app launcher / menu!
 
-```bash
-./launch.sh
-```
 
 ---
 

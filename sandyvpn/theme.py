@@ -39,6 +39,7 @@ def apply_theme(root: tk.Tk) -> ttk.Style:
     style.configure("Surface.TFrame", background=SURFACE)
     style.configure("TLabel", background=BG, foreground=FG)
     style.configure("Muted.TLabel", background=BG, foreground=FG_MUTED)
+    style.configure("Hint.TLabel", background=BG, foreground=FG_MUTED, font=("Segoe UI", 6))
     style.configure("Header.TLabel", background=BG, foreground=ORANGE_BRIGHT, font=("Segoe UI", 18, "bold"))
     style.configure("Uptime.TLabel", background=BG, foreground="#8fdf8f", font=("Segoe UI", 12, "bold"), anchor="center")
     style.configure("TLabelframe", background=BG, foreground=ORANGE, bordercolor=BORDER, relief="solid")

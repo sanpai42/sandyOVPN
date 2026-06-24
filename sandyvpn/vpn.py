@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 
 
 def _run_openvpn3(
@@ -33,6 +35,74 @@ def _run_openvpn3(
             on_output(line)
 
     return proc.wait(), "".join(lines)
+
+
+def list_config_paths_by_name(config_name: str) -> list[str]:
+    """Return configuration object paths for profiles matching ``config_name``."""
+    code, output = _run_openvpn3(["configs-list", "--json"])
+    if code != 0:
+        return []
+    try:
+        profiles = json.loads(output)
+    except json.JSONDecodeError:
+        return []
+    return [path for path, profile in profiles.items() if profile.get("name") == config_name]
+
+
+def remove_config(
+    config_name: str,
+    on_output: Callable[[str], None] | None = None,
+) -> tuple[int, str]:
+    """Remove all configuration profiles with the given name."""
+    if session_is_active(config_name):
+        disconnect_code, disconnect_output = disconnect_session(config_name)
+        if disconnect_code != 0:
+            return disconnect_code, disconnect_output
+
+    paths = list_config_paths_by_name(config_name)
+    if not paths:
+        return 0, ""
+
+    combined_output: list[str] = []
+    for path in paths:
+        code, output = _run_openvpn3(
+            ["config-remove", "--path", path, "--force"],
+            on_output=on_output,
+        )
+        combined_output.append(output)
+        if code != 0:
+            return code, "".join(combined_output)
+    return 0, "".join(combined_output)
+
+
+def import_config(
+    ovpn_path: str | Path,
+    config_name: str,
+    on_output: Callable[[str], None] | None = None,
+) -> tuple[int, str]:
+    """Import an .ovpn file as a persistent OpenVPN 3 configuration profile."""
+    paths = list_config_paths_by_name(config_name)
+    if paths:
+        if on_output is not None:
+            count = len(paths)
+            noun = "profile" if count == 1 else "profiles"
+            on_output(f"Removing {count} existing {noun} named '{config_name}'...\n")
+        remove_code, remove_output = remove_config(config_name, on_output=on_output)
+        if remove_code != 0:
+            return remove_code, remove_output
+
+    path = Path(ovpn_path)
+    return _run_openvpn3(
+        [
+            "config-import",
+            "--config",
+            str(path),
+            "--name",
+            config_name,
+            "--persistent",
+        ],
+        on_output=on_output,
+    )
 
 
 def start_session(
