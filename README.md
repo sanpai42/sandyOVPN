@@ -18,7 +18,7 @@ Save your profile once. Hit Connect. SandyVPN handles the rest.
 A live timer, real-time stats, and one-click Disconnect or Reconnect — no tabbing back to slack to copy your password!
 
 **Secure.. I Think.**  
-Passwords are encrypted on disk and cleared from memory after use. Your login isn’t sitting in plain text waiting for the next session.
+Passwords are encrypted on disk and cleared from RAM after use. Your login isn’t sitting in plain text waiting for the russian hacker.
 
 **Kawai**  
 Dark UI, orange accents, a soft green glow when you’re connected, and a mascot that dozes off when the VPN’s down. 
@@ -45,10 +45,13 @@ sudo apt install python3 python3-tk python3-venv
 # Install
 
 ```bash
+git clone https://github.com/sanpai42/sandyOVPN
+cd sandyvpn
+
 bash ./install.sh
 ```
 
-That sets up a virtual environment, installs dependencies, and adds **SandyVPN** to your application menu and Desktop.
+That sets up a virtual environment, installs dependencies, and adds **SandyVPN** to your application menu and Desktop. IF you have openvpn, it gets upgraded to openvpn3 with your consent.
 
 ## Run
 
@@ -60,6 +63,10 @@ Open **SandyOVPN** from your app launcher / menu!
 **Quick start:** enter your config name, username, and password → **Save credentials** (first time) → **Connect**. Next time, just click Connect and go.
 
 Built for personal use on a trusted Linux machine. Credentials are encrypted at rest; decrypt happens only when you connect.
+
+KNOWN Bugs:
+
+If your ovpn file is in a secure folder that needs admin access, you might not be able to drag and drop the file. Try moving it into the project folder or launching app as sudo.
 
 
 *So long, and thanks for all the fish! 🐬*
