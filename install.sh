@@ -414,9 +414,11 @@ $ICON_LINE
 Terminal=false
 Categories=Network;
 StartupNotify=true
+StartupWMClass=sandyovpn
 EOF
 
 chmod +x "$DESKTOP_FILE"
+update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
 
 if [[ -d "$HOME/Desktop" ]]; then
   ln -sf "$DESKTOP_FILE" "$HOME/Desktop/sandyvpn.desktop"
@@ -426,9 +428,9 @@ fi
 echo "    Menu entry: $DESKTOP_FILE"
 echo
 echo "Done. You can now:"
+echo "  - Search for SandyVPN in your application menu"
 echo "  - Double-click launch.sh in this folder"
 echo "  - Double-click SandyVPN on your Desktop"
-echo "  - Search for SandyVPN in your application menu"
 echo
 echo "First time only: if your file manager asks, choose"
 echo "\"Run\" or \"Allow executing file as program\" for launch.sh."

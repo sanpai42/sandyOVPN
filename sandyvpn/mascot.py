@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
 import random
 import tkinter as tk
+from datetime import datetime
 
 # One pun is chosen at random each time the app launches.
 CONNECTED_PUNS: tuple[str, ...] = (
@@ -49,18 +51,19 @@ CAT_HEIGHT = 110
 
 
 class GingerCatMascot:
-    """Ginger cat illustration drawn directly on the top banner canvas."""
+    """Chibi ginger cat illustration drawn on the top banner canvas."""
 
     GINGER = "#e8892b"
     GINGER_DARK = "#c46f1a"
-    GINGER_LIGHT = "#f5a84a"
-    BELLY = "#f0c080"
-    EYE = "#ff1a1a"
-    EYE_HIGHLIGHT = "#ffc8c8"
-    EYE_OUTLINE = "#8b0000"
-    NOSE = "#e87888"
-    WHISKER = "#d4c4b0"
-    OUTLINE = "#8a4f12"
+    GINGER_LIGHT = "#f8c878"
+    BELLY = "#ffe8c8"
+    EAR_INNER = "#ffb8b0"
+    EYE = "#5c3d28"
+    EYE_SHINE = "#ffffff"
+    BLUSH = "#ff9aaa"
+    NOSE = "#ff8fa8"
+    WHISKER = "#e8d8c8"
+    OUTLINE = "#9a6b3a"
     TAG = "mascot"
 
     def __init__(self) -> None:
@@ -76,61 +79,134 @@ class GingerCatMascot:
         self._draw_cat(canvas, ox, oy, awake=self._connected)
         self._draw_speech(canvas, ox, oy)
 
+    def _draw_spiral_tail(self, canvas: tk.Canvas, ox: int, oy: int, tag: str) -> None:
+        """Thin spiral tail rooted low on the body; body is drawn on top of the root."""
+        round_cap = {"capstyle": tk.ROUND, "joinstyle": tk.ROUND}
+        ax = ox + 36
+        ay = oy + 90
+        tail: list[float] = [ax, ay]
+        for i in range(1, 21):
+            t = i / 20
+            angle = math.radians(205 + t * 400)
+            radius = 1.2 + t * 8.5
+            x = ax + radius * math.cos(angle)
+            y = ay + radius * math.sin(angle) * 0.42
+            tail.extend([x, min(y, oy + 93.5)])
+
+        for color, width in ((self.OUTLINE, 6), (self.GINGER_DARK, 4), (self.GINGER, 2)):
+            canvas.create_line(
+                *tail, fill=color, width=width, smooth=True, tags=tag, **round_cap,
+            )
+
     def _draw_cat(self, canvas: tk.Canvas, ox: int, oy: int, *, awake: bool) -> None:
         tag = self.TAG
-        canvas.create_arc(
-            ox + 4, oy + 62, ox + 44, oy + 102,
-            start=200, extent=120, style=tk.ARC, outline=self.GINGER_DARK, width=8, tags=tag,
+
+        self._draw_spiral_tail(canvas, ox, oy, tag)
+
+        # Small sitting body tucked under the head.
+        canvas.create_oval(
+            ox + 34, oy + 68, ox + 68, oy + 92,
+            fill=self.GINGER, outline=self.OUTLINE, width=2, tags=tag,
         )
         canvas.create_oval(
-            ox + 34, oy + 66, ox + 92, oy + 106, fill=self.GINGER, outline=self.OUTLINE, width=2, tags=tag,
+            ox + 42, oy + 74, ox + 60, oy + 88,
+            fill=self.BELLY, outline="", tags=tag,
         )
-        canvas.create_oval(ox + 48, oy + 76, ox + 78, oy + 100, fill=self.BELLY, outline="", tags=tag)
+
+        # Big round head (covers the top of the body).
         canvas.create_oval(
-            ox + 38, oy + 22, ox + 98, oy + 82, fill=self.GINGER, outline=self.OUTLINE, width=2, tags=tag,
+            ox + 22, oy + 22, ox + 80, oy + 76,
+            fill=self.GINGER, outline=self.OUTLINE, width=2, tags=tag,
         )
-        canvas.create_polygon(
-            ox + 40, oy + 38, ox + 48, oy + 12, ox + 58, oy + 34,
-            fill=self.GINGER_DARK, outline=self.OUTLINE, width=1, tags=tag,
+
+        # Ears.
+        for tip_x, base_l, base_r, base_y in ((34, 26, 40, 30), (62, 62, 76, 30)):
+            canvas.create_polygon(
+                ox + tip_x, oy + 16, ox + base_l, oy + base_y, ox + base_r, oy + base_y,
+                fill=self.GINGER_DARK, outline=self.OUTLINE, width=1, tags=tag,
+            )
+            canvas.create_polygon(
+                ox + tip_x, oy + 20, ox + base_l + 3, oy + base_y - 2, ox + base_r - 3, oy + base_y - 2,
+                fill=self.EAR_INNER, outline="", tags=tag,
+            )
+
+        # Forehead tabby mark.
+        canvas.create_line(
+            ox + 44, oy + 30, ox + 51, oy + 38, ox + 58, oy + 30,
+            fill=self.GINGER_DARK, width=2, smooth=True, tags=tag,
         )
-        canvas.create_polygon(
-            ox + 78, oy + 34, ox + 88, oy + 12, ox + 96, oy + 38,
-            fill=self.GINGER_DARK, outline=self.OUTLINE, width=1, tags=tag,
-        )
-        canvas.create_polygon(ox + 44, oy + 34, ox + 50, oy + 20, ox + 54, oy + 36, fill=self.GINGER_LIGHT, outline="", tags=tag)
-        canvas.create_polygon(ox + 82, oy + 36, ox + 86, oy + 20, ox + 92, oy + 34, fill=self.GINGER_LIGHT, outline="", tags=tag)
+
+        # Cheek blush.
+        for bx in (28, 64):
+            canvas.create_oval(
+                ox + bx, oy + 52, ox + bx + 12, oy + 60,
+                fill=self.BLUSH, outline="", tags=tag,
+            )
+
         if awake:
-            canvas.create_oval(ox + 52, oy + 44, ox + 62, oy + 56, fill=self.EYE, outline=self.EYE_OUTLINE, width=1, tags=tag)
-            canvas.create_oval(ox + 74, oy + 44, ox + 84, oy + 56, fill=self.EYE, outline=self.EYE_OUTLINE, width=1, tags=tag)
-            canvas.create_oval(ox + 55, oy + 47, ox + 58, oy + 50, fill=self.EYE_HIGHLIGHT, outline="", tags=tag)
-            canvas.create_oval(ox + 77, oy + 47, ox + 80, oy + 50, fill=self.EYE_HIGHLIGHT, outline="", tags=tag)
+            self._draw_awake_face(canvas, ox, oy, tag)
         else:
-            canvas.create_arc(
-                ox + 52, oy + 48, ox + 62, oy + 56,
-                start=0, extent=180, style=tk.ARC, outline=self.OUTLINE, width=1, tags=tag,
+            self._draw_sleep_face(canvas, ox, oy, tag)
+
+        # Two front paws at the bottom.
+        for px in (38, 54):
+            canvas.create_oval(
+                ox + px, oy + 84, ox + px + 12, oy + 96,
+                fill=self.GINGER_LIGHT, outline=self.OUTLINE, width=1, tags=tag,
             )
-            canvas.create_arc(
-                ox + 74, oy + 48, ox + 84, oy + 56,
-                start=0, extent=180, style=tk.ARC, outline=self.OUTLINE, width=1, tags=tag,
+
+        # Whiskers.
+        for y_off in (-2, 4, 10):
+            canvas.create_line(
+                ox + 26, oy + 54 + y_off, ox + 38, oy + 54 + y_off,
+                fill=self.WHISKER, width=1, tags=tag,
             )
-        canvas.create_polygon(
-            ox + 66, oy + 56, ox + 70, oy + 60, ox + 62, oy + 60,
-            fill=self.NOSE, outline=self.OUTLINE, width=1, tags=tag,
-        )
-        canvas.create_line(ox + 66, oy + 60, ox + 66, oy + 64, fill=self.OUTLINE, tags=tag)
-        canvas.create_arc(
-            ox + 58, oy + 62, ox + 66, oy + 70, start=200, extent=80, style=tk.ARC, outline=self.OUTLINE, width=1, tags=tag,
-        )
-        canvas.create_arc(
-            ox + 66, oy + 62, ox + 74, oy + 70, start=280, extent=80, style=tk.ARC, outline=self.OUTLINE, width=1, tags=tag,
-        )
-        for y_off in (-2, 4):
-            canvas.create_line(ox + 44, oy + 58 + y_off, ox + 58, oy + 58 + y_off, fill=self.WHISKER, width=1, tags=tag)
-            canvas.create_line(ox + 96, oy + 58 + y_off, ox + 82, oy + 58 + y_off, fill=self.WHISKER, width=1, tags=tag)
-        canvas.create_oval(ox + 42, oy + 98, ox + 54, oy + 110, fill=self.GINGER_DARK, outline=self.OUTLINE, width=1, tags=tag)
-        canvas.create_oval(ox + 76, oy + 98, ox + 88, oy + 110, fill=self.GINGER_DARK, outline=self.OUTLINE, width=1, tags=tag)
+            canvas.create_line(
+                ox + 76, oy + 54 + y_off, ox + 64, oy + 54 + y_off,
+                fill=self.WHISKER, width=1, tags=tag,
+            )
+
         if not awake:
             self._draw_sleep_zzzs(canvas, ox, oy)
+
+    def _draw_awake_face(self, canvas: tk.Canvas, ox: int, oy: int, tag: str) -> None:
+        for cx in (38, 64):
+            canvas.create_oval(
+                ox + cx - 8, oy + 42, ox + cx + 8, oy + 56,
+                fill=self.EYE, outline=self.OUTLINE, width=1, tags=tag,
+            )
+            canvas.create_oval(
+                ox + cx - 5, oy + 44, ox + cx + 1, oy + 50,
+                fill=self.EYE_SHINE, outline="", tags=tag,
+            )
+
+        canvas.create_polygon(
+            ox + 51, oy + 56, ox + 55, oy + 60, ox + 47, oy + 60,
+            fill=self.NOSE, outline=self.OUTLINE, width=1, tags=tag,
+        )
+        canvas.create_arc(
+            ox + 45, oy + 58, ox + 57, oy + 68,
+            start=200, extent=140, style=tk.ARC,
+            outline=self.OUTLINE, width=1, tags=tag,
+        )
+
+    def _draw_sleep_face(self, canvas: tk.Canvas, ox: int, oy: int, tag: str) -> None:
+        for cx in (38, 64):
+            canvas.create_arc(
+                ox + cx - 7, oy + 46, ox + cx + 7, oy + 54,
+                start=0, extent=180, style=tk.ARC,
+                outline=self.OUTLINE, width=2, tags=tag,
+            )
+
+        canvas.create_oval(
+            ox + 49, oy + 58, ox + 53, oy + 62,
+            fill=self.NOSE, outline=self.OUTLINE, width=1, tags=tag,
+        )
+        canvas.create_arc(
+            ox + 47, oy + 62, ox + 55, oy + 68,
+            start=10, extent=160, style=tk.ARC,
+            outline=self.OUTLINE, width=1, tags=tag,
+        )
 
     def _draw_letter_z(
         self,
@@ -149,23 +225,24 @@ class GingerCatMascot:
 
     def _draw_sleep_zzzs(self, canvas: tk.Canvas, ox: int, oy: int) -> None:
         """Small Z's drifting up over the forehead, clear of the speech bubble."""
-        self._draw_letter_z(canvas, ox + 64, oy + 40, 3, "#7a8a9e", width=1)
-        self._draw_letter_z(canvas, ox + 70, oy + 34, 4, "#95a5b8", width=1)
-        self._draw_letter_z(canvas, ox + 76, oy + 28, 5, "#b0c0d4", width=1)
+        self._draw_letter_z(canvas, ox + 64, oy + 14, 3, "#7a8a9e", width=1)
+        self._draw_letter_z(canvas, ox + 70, oy + 8, 4, "#95a5b8", width=1)
+        self._draw_letter_z(canvas, ox + 76, oy + 2, 5, "#b0c0d4", width=1)
 
     def _draw_speech(self, canvas: tk.Canvas, ox: int, oy: int) -> None:
         if self._connected:
             message = self._connected_pun
             color = "#7fd67f"
         else:
-            message = "Cofee with milk.."
+            day = datetime.now().strftime("%A")
+            message = "I love Fridays" if day == "Friday" else f"I hate {day}s"
             color = "#ffaa55"
         canvas.create_text(
-            ox + 51,
-            oy + 6,
+            ox + 30,
+            oy + 10,
             text=message,
             fill=color,
-            font=("Segoe UI", 6, "italic"),
+            font=("Segoe UI", 5, "italic"),
             width=96,
             anchor=tk.N,
             justify=tk.CENTER,

@@ -8,7 +8,7 @@ from datetime import datetime
 from tkinter import messagebox, ttk
 
 from sandyvpn.glow import TopBanner
-from sandyvpn.icon import apply_window_icon
+from sandyvpn.icon import APP_WM_CLASS, configure_app_window
 from sandyvpn.import_dialog import ConfigImportDialog
 from sandyvpn.mascot import GingerCatMascot
 from sandyvpn.storage import (
@@ -57,7 +57,6 @@ class SandyVPNApp:
         self._connected_since: datetime | None = None
 
         apply_theme(root)
-        self._window_icon = apply_window_icon(root)
         self._build_ui()
         self._set_busy(False)
         self._load_saved_credentials()
@@ -620,10 +619,14 @@ def main() -> None:
     try:
         from tkinterdnd2 import TkinterDnD
 
-        root = TkinterDnD.Tk()
+        root = TkinterDnD.Tk(className=APP_WM_CLASS)
     except ImportError:
-        root = tk.Tk()
+        root = tk.Tk(className=APP_WM_CLASS)
+
+    root.withdraw()
+    configure_app_window(root)
     SandyVPNApp(root)
+    root.deiconify()
     root.mainloop()
 
 
