@@ -431,6 +431,5 @@ echo "Done. You can now:"
 echo "  - Search for SandyVPN in your application menu"
 echo "  - Double-click launch.sh in this folder"
 echo "  - Double-click SandyVPN on your Desktop"
-echo
-echo "First time only: if your file manager asks, choose"
-echo "\"Run\" or \"Allow executing file as program\" for launch.sh."
+
+echo "  - If it doesnt show up, you can open via launch.sh script :("

@@ -66,8 +66,8 @@ class SandyVPNApp:
 
         field_pad = (0, 8)
         ttk.Label(self.setup_frame, text="Config name").grid(row=0, column=0, sticky=tk.W, padx=(0, 8), pady=(0, 4))
-        ttk.Label(self.setup_frame, text="Auth username").grid(row=0, column=1, sticky=tk.W, padx=(0, 8), pady=(0, 4))
-        ttk.Label(self.setup_frame, text="Auth password").grid(row=0, column=2, sticky=tk.W, pady=(0, 4))
+        ttk.Label(self.setup_frame, text="VPN username").grid(row=0, column=1, sticky=tk.W, padx=(0, 8), pady=(0, 4))
+        ttk.Label(self.setup_frame, text="VPN password").grid(row=0, column=2, sticky=tk.W, pady=(0, 4))
 
         self.config_var = tk.StringVar()
         self.config_var.trace_add("write", self._on_config_var_changed)
@@ -561,7 +561,8 @@ class SandyVPNApp:
 
             timestamp = datetime.now().strftime("%H:%M:%S")
             if code == 0:
-                text = f"Updated {timestamp}\n\n{output.strip()}\n"
+
+                text = f"Updated: {timestamp}\n\n{output.strip()}\n\n[ ฅ^>⩊<^ ฅ Please wait 10 seconds for network to be connected ]"
                 self.root.after(0, lambda: self._set_status_text(text))
                 self.root.after(
                     0,
