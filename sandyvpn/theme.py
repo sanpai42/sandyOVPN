@@ -14,11 +14,13 @@ FG_MUTED = "#a8a4a0"
 ORANGE = "#ff8c32"
 ORANGE_BRIGHT = "#ffaa55"
 ORANGE_DIM = "#c96a18"
+GREEN = "#3d9a5c"
+GREEN_BRIGHT = "#5fcf7f"
+GREEN_DIM = "#2d7a48"
 BORDER = "#ff8c32"
 ENTRY_BG = "#252530"
 TEXT_BG = "#181820"
 ACCENT_LINE = "#ff8c32"
-GLOW_TINT = "#17241e"
 
 
 def blend_hex(color_a: str, color_b: str, ratio: float) -> str:
@@ -36,12 +38,9 @@ def apply_theme(root: tk.Tk) -> ttk.Style:
 
     style.configure(".", background=BG, foreground=FG, bordercolor=BORDER, troughcolor=SURFACE_ALT)
     style.configure("TFrame", background=BG)
-    style.configure("Surface.TFrame", background=SURFACE)
     style.configure("TLabel", background=BG, foreground=FG)
     style.configure("Muted.TLabel", background=BG, foreground=FG_MUTED)
     style.configure("Hint.TLabel", background=BG, foreground=FG_MUTED, font=("Segoe UI", 6))
-    style.configure("Header.TLabel", background=BG, foreground=ORANGE_BRIGHT, font=("Segoe UI", 18, "bold"))
-    style.configure("Uptime.TLabel", background=BG, foreground="#8fdf8f", font=("Segoe UI", 12, "bold"), anchor="center")
     style.configure("TLabelframe", background=BG, foreground=ORANGE, bordercolor=BORDER, relief="solid")
     style.configure("TLabelframe.Label", background=BG, foreground=ORANGE, font=("Segoe UI", 10, "bold"))
     style.configure(
@@ -85,6 +84,20 @@ def apply_theme(root: tk.Tk) -> ttk.Style:
         "Accent.TButton",
         background=[("active", ORANGE), ("pressed", ORANGE_BRIGHT), ("disabled", SURFACE)],
         foreground=[("active", BG), ("pressed", BG), ("disabled", FG_MUTED)],
+    )
+    style.configure(
+        "Import.TButton",
+        background=GREEN,
+        foreground=BG,
+        bordercolor=GREEN_BRIGHT,
+        font=("Segoe UI", 11, "bold"),
+        padding=(16, 8),
+    )
+    style.map(
+        "Import.TButton",
+        background=[("active", GREEN_BRIGHT), ("pressed", GREEN_BRIGHT), ("disabled", SURFACE)],
+        foreground=[("active", BG), ("pressed", BG), ("disabled", FG_MUTED)],
+        bordercolor=[("active", GREEN_BRIGHT), ("pressed", GREEN_BRIGHT), ("disabled", BORDER)],
     )
     style.configure(
         "TScrollbar",

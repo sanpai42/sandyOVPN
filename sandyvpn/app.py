@@ -2,33 +2,19 @@
 
 from __future__ import annotations
 
-import threading
 import tkinter as tk
 from datetime import datetime
 from tkinter import messagebox, ttk
 
+from sandyvpn.errors import CredentialsCorruptedError, OpenVpn3Error
 from sandyvpn.glow import TopBanner
 from sandyvpn.icon import APP_WM_CLASS, configure_app_window
 from sandyvpn.import_dialog import ConfigImportDialog
 from sandyvpn.mascot import GingerCatMascot
-from sandyvpn.storage import (
-    Credentials,
-    clear_credentials,
-    credentials_exist,
-    has_stored_password,
-    load_profile,
-    save_credentials,
-    unlock_password,
-)
-from sandyvpn.theme import BG, ScrolledText, apply_theme, style_text_widget
-from sandyvpn.vpn import (
-    disconnect_session,
-    get_session_started_at,
-    get_session_stats,
-    restart_session,
-    session_is_active,
-    start_session,
-)
+from sandyvpn.session_service import VpnSessionService
+from sandyvpn.storage import CredentialStore
+from sandyvpn.theme import ScrolledText, apply_theme, style_text_widget
+from sandyvpn.threading_ui import run_in_thread
 
 STATUS_POLL_MS = 10_000
 UPTIME_TICK_MS = 1_000
@@ -49,6 +35,8 @@ class SandyVPNApp:
         self.root = root
         self.root.title("sandyOVPN")
         self.root.minsize(520, 480)
+        self._store = CredentialStore()
+        self._sessions = VpnSessionService()
         self._busy = False
         self._connected = False
         self._active_config = ""
@@ -119,8 +107,13 @@ class SandyVPNApp:
         right_btn_row.pack(side=tk.RIGHT)
         self.right_btn_row = right_btn_row
 
-        self.import_btn = ttk.Button(right_btn_row, text="Import ovpn file", command=self._on_import_config)
-        self.import_btn.pack(side=tk.RIGHT)
+        self.import_btn = ttk.Button(
+            right_btn_row,
+            text="Import ovpn file",
+            style="Import.TButton",
+            command=self._on_import_config,
+        )
+        self.import_btn.pack(side=tk.RIGHT, padx=(12, 0))
 
         self.clear_btn = ttk.Button(right_btn_row, text="Clear saved config", command=self._on_clear)
         self.clear_btn.pack(side=tk.RIGHT, padx=(8, 0))
@@ -166,7 +159,7 @@ class SandyVPNApp:
         self._update_credential_buttons()
 
     def _connect_allowed(self) -> bool:
-        return credentials_exist() and has_stored_password()
+        return self._store.credentials_exist() and self._store.has_stored_password()
 
     def _connect_disabled_reason(self) -> str | None:
         if self._connected:
@@ -179,7 +172,7 @@ class SandyVPNApp:
             return "Enter a config name, then save credentials to connect."
         if not self.username_var.get().strip():
             return "Enter a username, then save credentials to connect."
-        if not self._get_typed_password() and not has_stored_password():
+        if not self._get_typed_password() and not self._store.has_stored_password():
             return "Enter a password, then save credentials to connect."
         return "Save credentials to connect."
 
@@ -202,7 +195,7 @@ class SandyVPNApp:
         self.password_var.set("")
 
     def _purge_password_from_ui(self) -> None:
-        if credentials_exist() and has_stored_password():
+        if self._store.credentials_exist() and self._store.has_stored_password():
             self._show_password_placeholder()
         else:
             self._clear_password_field()
@@ -229,7 +222,7 @@ class SandyVPNApp:
         self._update_connect_button()
 
     def _update_credential_buttons(self) -> None:
-        if credentials_exist():
+        if self._store.credentials_exist():
             self.save_btn.pack_forget()
             self.clear_btn.pack(in_=self.right_btn_row, side=tk.RIGHT, padx=(8, 0))
         else:
@@ -241,82 +234,78 @@ class SandyVPNApp:
     def _update_import_button(self) -> None:
         show = not self._connected and not self.config_var.get().strip()
         if show:
-            self.import_btn.pack(in_=self.right_btn_row, side=tk.RIGHT)
+            self.import_btn.pack(in_=self.right_btn_row, side=tk.RIGHT, padx=(12, 0))
         else:
             self.import_btn.pack_forget()
 
+    def _show_validation_error(self, error: tuple[str, str]) -> None:
+        title, message = error
+        messagebox.showwarning(title, message)
+
     def _load_saved_credentials(self) -> None:
-        profile = load_profile()
+        load_error = self._store.load_error
+        if load_error is not None:
+            messagebox.showerror("Credentials error", load_error)
+            return
+
+        try:
+            profile = self._store.load_profile()
+        except CredentialsCorruptedError as exc:
+            messagebox.showerror("Credentials error", str(exc))
+            return
+
         if profile is None:
             return
         self.config_var.set(profile.config_name)
         self.username_var.set(profile.username)
         self._purge_password_from_ui()
         self._update_credential_buttons()
-        if has_stored_password():
+        if self._store.has_stored_password():
             self._append_output("Loaded saved profile. \n(Password stays encrypted at all times.)\n")
         else:
             self._append_output("Loaded saved profile.\n")
 
     def _resolve_connect_auth(self) -> tuple[str, str, str] | None:
-        config_name = self.config_var.get().strip()
-        username = self.username_var.get().strip()
-        typed_password = self._get_typed_password()
-
-        if not config_name:
-            messagebox.showwarning("Missing config", "Enter a configuration profile name.")
+        result = self._store.resolve_connect(
+            self.config_var.get().strip(),
+            self.username_var.get().strip(),
+            self._get_typed_password(),
+        )
+        if isinstance(result, tuple):
+            self._show_validation_error(result)
             return None
-        if not username:
-            messagebox.showwarning("Missing username", "Enter an auth username.")
-            return None
-
-        if typed_password:
-            password = typed_password
+        if self._get_typed_password():
             self._purge_password_from_ui()
-            return config_name, username, password
+        return result.config_name, result.username, result.password
 
-        password = unlock_password()
-        if password is None:
-            messagebox.showwarning(
-                "Missing password",
-                "Save credentials first, then connect.",
-            )
+    def _resolve_save_auth(self):
+        result = self._store.resolve_save(
+            self.config_var.get().strip(),
+            self.username_var.get().strip(),
+            self._get_typed_password(),
+        )
+        if result is None:
             return None
-        return config_name, username, password
-
-    def _resolve_save_auth(self) -> Credentials | None:
-        if credentials_exist():
+        if isinstance(result, tuple):
+            self._show_validation_error(result)
             return None
-        config_name = self.config_var.get().strip()
-        username = self.username_var.get().strip()
-        password = self._get_typed_password()
-
-        if not config_name:
-            messagebox.showwarning("Missing config", "Enter a configuration profile name.")
-            return None
-        if not username:
-            messagebox.showwarning("Missing username", "Enter an auth username.")
-            return None
-        if not password:
-            messagebox.showwarning("Missing password", "Enter an auth password to save.")
-            return None
-        return Credentials(config_name=config_name, username=username, password=password)
+        return result
 
     def _check_existing_session(self) -> None:
         config_name = self.config_var.get().strip()
         if not config_name:
             return
 
-        def run() -> None:
-            if not session_is_active(config_name):
+        def work() -> None:
+            if not self._sessions.is_active(config_name):
                 return
-            started_at = get_session_started_at(config_name)
+            started_at = self._sessions.started_at(config_name)
             self.root.after(
                 0,
                 lambda c=config_name, s=started_at: self._enter_connected_state(c, started_at=s),
             )
 
-        threading.Thread(target=run, daemon=True).start()
+        run_in_thread(self.root, work)
 
     def _on_import_config(self) -> None:
         if self._busy or self._connected:
@@ -330,6 +319,7 @@ class SandyVPNApp:
 
         ConfigImportDialog(
             self.root,
+            sessions=self._sessions,
             on_imported=on_imported,
             on_output=self._append_output,
         )
@@ -338,7 +328,7 @@ class SandyVPNApp:
         creds = self._resolve_save_auth()
         if creds is None:
             return
-        save_credentials(creds)
+        self._store.save(creds)
         self._purge_password_from_ui()
         self._update_credential_buttons()
         self._append_output("Credentials saved (password encrypted on disk).\n")
@@ -346,7 +336,7 @@ class SandyVPNApp:
     def _on_clear(self) -> None:
         if not messagebox.askyesno("Clear credentials", "Remove saved credentials and clear the form?"):
             return
-        clear_credentials()
+        self._store.clear()
         self.config_var.set("")
         self.username_var.set("")
         self._purge_password_from_ui()
@@ -364,13 +354,13 @@ class SandyVPNApp:
         self._set_busy(True)
         self._append_output(f"\nStarting session for config '{config_name}'...\n")
 
-        def run() -> None:
+        def work() -> None:
             def append_line(line: str) -> None:
                 self.root.after(0, lambda: self._append_output(line))
 
             session_password = password
             try:
-                code, _ = start_session(
+                code, _ = self._sessions.connect(
                     config_name,
                     username,
                     session_password,
@@ -386,21 +376,10 @@ class SandyVPNApp:
                         0,
                         lambda: self._append_output(f"\nSession start failed with code {code}.\n"),
                     )
-            except FileNotFoundError:
-                self.root.after(
-                    0,
-                    lambda: messagebox.showerror(
-                        "openvpn3 not found",
-                        "Could not find the openvpn3 command. Is OpenVPN 3 installed?",
-                    ),
-                )
-            except Exception as exc:  # noqa: BLE001
-                self.root.after(0, lambda: messagebox.showerror("Connection error", str(exc)))
             finally:
                 session_password = ""
-                self.root.after(0, lambda: self._set_busy(False))
 
-        threading.Thread(target=run, daemon=True).start()
+        run_in_thread(self.root, work, error_title="Connection error", on_finally=lambda: self._set_busy(False))
 
     def _on_disconnect(self) -> None:
         if self._busy or not self._connected:
@@ -408,58 +387,50 @@ class SandyVPNApp:
         if not messagebox.askyesno("Disconnect", f"Disconnect VPN session '{self._active_config}'?"):
             return
 
+        active_config = self._active_config
         self._set_busy(True)
-        self._append_output(f"\nDisconnecting '{self._active_config}'...\n")
+        self._append_output(f"\nDisconnecting '{active_config}'...\n")
 
-        def run() -> None:
-            try:
-                code, output = disconnect_session(self._active_config)
-                self.root.after(0, lambda: self._append_output(output))
-                if code == 0:
-                    self.root.after(0, self._enter_disconnected_state)
-                    self.root.after(0, lambda: self._append_output("Disconnected.\n"))
-                else:
-                    self.root.after(
-                        0,
-                        lambda: messagebox.showerror("Disconnect failed", output or f"Exit code {code}"),
-                    )
-            except Exception as exc:  # noqa: BLE001
-                self.root.after(0, lambda: messagebox.showerror("Disconnect error", str(exc)))
-            finally:
-                self.root.after(0, lambda: self._set_busy(False))
+        def work() -> None:
+            code, output = self._sessions.disconnect(active_config)
+            self.root.after(0, lambda: self._append_output(output))
+            if code == 0:
+                self.root.after(0, self._enter_disconnected_state)
+                self.root.after(0, lambda: self._append_output("Disconnected.\n"))
+            else:
+                self.root.after(
+                    0,
+                    lambda: messagebox.showerror("Disconnect failed", output or f"Exit code {code}"),
+                )
 
-        threading.Thread(target=run, daemon=True).start()
+        run_in_thread(self.root, work, error_title="Disconnect error", on_finally=lambda: self._set_busy(False))
 
     def _on_reconnect(self) -> None:
         if self._busy or not self._connected:
             return
 
+        active_config = self._active_config
         self._set_busy(True)
-        self._append_output(f"\nReconnecting '{self._active_config}'...\n")
+        self._append_output(f"\nReconnecting '{active_config}'...\n")
 
-        def run() -> None:
-            try:
-                code, output = restart_session(self._active_config)
-                self.root.after(0, lambda: self._append_output(output))
-                if code == 0:
-                    self.root.after(
-                        0,
-                        lambda: self._append_output("Reconnect triggered successfully.\n"),
-                    )
-                    started_at = get_session_started_at(self._active_config)
-                    self.root.after(0, lambda s=started_at: self._reset_uptime(s))
-                    self.root.after(0, self._refresh_status)
-                else:
-                    self.root.after(
-                        0,
-                        lambda: messagebox.showerror("Reconnect failed", output or f"Exit code {code}"),
-                    )
-            except Exception as exc:  # noqa: BLE001
-                self.root.after(0, lambda: messagebox.showerror("Reconnect error", str(exc)))
-            finally:
-                self.root.after(0, lambda: self._set_busy(False))
+        def work() -> None:
+            code, output = self._sessions.reconnect(active_config)
+            self.root.after(0, lambda: self._append_output(output))
+            if code == 0:
+                self.root.after(
+                    0,
+                    lambda: self._append_output("Reconnect triggered successfully.\n"),
+                )
+                started_at = self._sessions.started_at(active_config)
+                self.root.after(0, lambda s=started_at: self._reset_uptime(s))
+                self.root.after(0, self._refresh_status)
+            else:
+                self.root.after(
+                    0,
+                    lambda: messagebox.showerror("Reconnect failed", output or f"Exit code {code}"),
+                )
 
-        threading.Thread(target=run, daemon=True).start()
+        run_in_thread(self.root, work, error_title="Reconnect error", on_finally=lambda: self._set_busy(False))
 
     def _set_connected_look(self, active: bool) -> None:
         self.top_banner.set_connected(active)
@@ -578,29 +549,31 @@ class SandyVPNApp:
 
         config_name = self._active_config
 
-        def run() -> None:
+        def work() -> None:
             try:
-                code, output = get_session_stats(config_name)
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                if code == 0:
-                    text = f"Updated {timestamp}\n\n{output.strip()}\n"
-                    self.root.after(0, lambda: self._set_status_text(text))
-                    self.root.after(
-                        0,
-                        lambda: self.status_summary_var.set(f"Connected — {config_name} (updated {timestamp})"),
-                    )
-                else:
-                    text = f"Updated {timestamp}\n\nSession no longer active.\n{output.strip()}\n"
-                    self.root.after(0, lambda: self._set_status_text(text))
-                    self.root.after(0, self._enter_disconnected_state)
-                    self.root.after(0, lambda: self._append_output("VPN session ended.\n"))
-            except Exception as exc:  # noqa: BLE001
+                code, output = self._sessions.stats(config_name)
+            except OpenVpn3Error as exc:
                 self.root.after(
                     0,
                     lambda: self._set_status_text(f"Failed to fetch status: {exc}\n"),
                 )
+                return
 
-        threading.Thread(target=run, daemon=True).start()
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            if code == 0:
+                text = f"Updated {timestamp}\n\n{output.strip()}\n"
+                self.root.after(0, lambda: self._set_status_text(text))
+                self.root.after(
+                    0,
+                    lambda: self.status_summary_var.set(f"Connected — {config_name} (updated {timestamp})"),
+                )
+            else:
+                text = f"Updated {timestamp}\n\nSession no longer active.\n{output.strip()}\n"
+                self.root.after(0, lambda: self._set_status_text(text))
+                self.root.after(0, self._enter_disconnected_state)
+                self.root.after(0, lambda: self._append_output("VPN session ended.\n"))
+
+        run_in_thread(self.root, work)
 
     def _set_status_text(self, text: str) -> None:
         self.status_text.config(state=tk.NORMAL)

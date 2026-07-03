@@ -57,8 +57,3 @@ def configure_app_window(root: tk.Tk) -> None:
             root.iconphoto(True, *images)
 
     root.bind("<Map>", _reapply, add="+")
-
-
-def icon_path() -> Path | None:
-    """Return the icon file path for desktop launchers, if it exists."""
-    return ICON_PNG if ICON_PNG.is_file() else None

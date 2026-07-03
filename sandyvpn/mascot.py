@@ -10,24 +10,17 @@ from datetime import datetime
 # One pun is chosen at random each time the app launches.
 CONNECTED_PUNS: tuple[str, ...] = (
     "Purrfect!",
-    "Claw-some link!",
-    "Meow's connected!",
-    "Pawsitively on!",
+    "Pawsitively ready!",
     "Fur-real secure!",
     "Tail-ored tunnel!",
     "Whiskers synced!",
-    "Cat-alyst online!",
-    "Purr protocol on!",
-    "Feline fine!",
-    "No cat-astrophe!",
-    "Tabby tunnel up!",
+    "No cat-astrophe today!",
+    "Justice for Palestine!",
     "Paw-some ping!",
     "Meow-tunnel live!",
-    "Fur-midable link!",
-    "Purr-sistant VPN!",
+    "Spider Cat, Spider Cat!",
     "Mew-nited nets!",
     "Orange you online?",
-    "Ginger snap link!",
     "Nine lives, one VPN!",
     "Scratch that lag!",
     "Purr-imeter sealed!",
@@ -41,13 +34,11 @@ CONNECTED_PUNS: tuple[str, ...] = (
     "Tunnel of treats!",
     "Lap-top secured!",
     "Kitty tunnel go!",
-    "Sandypaws online!",
-    "Paws and reflect!",
     "You've got cat-mail!",
 )
 
 CAT_WIDTH = 102
-CAT_HEIGHT = 110
+CAT_HEIGHT = 111
 
 
 class GingerCatMascot:

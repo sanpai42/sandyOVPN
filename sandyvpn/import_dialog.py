@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import getpass
-import threading
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from sandyvpn.session_service import VpnSessionService
 from sandyvpn.theme import BG, BORDER, FG, FG_MUTED, ORANGE_BRIGHT, SURFACE_ALT
-from sandyvpn.vpn import import_config
+from sandyvpn.threading_ui import run_in_thread
 
 try:
     from tkinterdnd2 import DND_FILES
@@ -27,10 +27,12 @@ class ConfigImportDialog:
         self,
         parent: tk.Tk,
         *,
+        sessions: VpnSessionService | None = None,
         on_imported: Callable[[str], None] | None = None,
         on_output: Callable[[str], None] | None = None,
     ) -> None:
         self.parent = parent
+        self._sessions = sessions or VpnSessionService()
         self.on_imported = on_imported
         self.on_output = on_output
         self._ovpn_path: Path | None = None
@@ -114,7 +116,7 @@ class ConfigImportDialog:
         self.import_btn = ttk.Button(
             btn_row,
             text="Import",
-            style="Accent.TButton",
+            style="Import.TButton",
             command=self._on_import,
             state=tk.DISABLED,
         )
@@ -187,41 +189,34 @@ class ConfigImportDialog:
         if self.on_output is not None:
             self.on_output(f"\nImporting '{ovpn_path.name}' as '{config_name}'...\n")
 
-        def run() -> None:
-            try:
-                code, output = import_config(
-                    ovpn_path,
-                    config_name,
-                    on_output=self.on_output,
-                )
-                if code == 0:
-                    self.dialog.after(
-                        0,
-                        lambda: self._finish_success(config_name, output),
-                    )
-                else:
-                    self.dialog.after(
-                        0,
-                        lambda: self._finish_failure(output or f"Import failed with code {code}."),
-                    )
-            except FileNotFoundError:
+        def work() -> None:
+            code, output = self._sessions.import_config(
+                ovpn_path,
+                config_name,
+                on_output=self.on_output,
+            )
+            if code == 0:
                 self.dialog.after(
                     0,
-                    lambda: messagebox.showerror(
-                        "openvpn3 not found",
-                        "Could not find the openvpn3 command. Is OpenVPN 3 installed?",
-                        parent=self.dialog,
-                    ),
+                    lambda: self._finish_success(config_name, output),
                 )
-                self.dialog.after(0, lambda: self._set_busy(False))
-            except Exception as exc:  # noqa: BLE001
+            else:
                 self.dialog.after(
                     0,
-                    lambda: messagebox.showerror("Import error", str(exc), parent=self.dialog),
+                    lambda: self._finish_failure(output or f"Import failed with code {code}."),
                 )
-                self.dialog.after(0, lambda: self._set_busy(False))
 
-        threading.Thread(target=run, daemon=True).start()
+        def reset_busy_if_open() -> None:
+            if self.dialog.winfo_exists():
+                self._set_busy(False)
+
+        run_in_thread(
+            self.dialog,
+            work,
+            error_title="Import error",
+            on_finally=reset_busy_if_open,
+            parent=self.dialog,
+        )
 
     def _finish_success(self, config_name: str, output: str) -> None:
         if output and self.on_output is not None:
