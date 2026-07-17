@@ -131,11 +131,44 @@ class CredentialStore:
         return password or None
 
     def save(self, creds: Credentials) -> None:
-        payload = {
-            "config_name": creds.config_name,
-            "username": creds.username,
-            "password": creds.password,
-        }
+        payload = dict(self._payload() or {})
+        payload["config_name"] = creds.config_name
+        payload["username"] = creds.username
+        payload["password"] = creds.password
+        self._write(payload)
+
+    def record_source(self, ovpn_path: Path) -> None:
+        """Remember which .ovpn file a config profile was last imported from."""
+        payload = dict(self._payload() or {})
+        payload["ovpn_path"] = str(ovpn_path)
+        payload["ovpn_mtime"] = ovpn_path.stat().st_mtime
+        self._write(payload)
+
+    def get_source_path(self) -> Path | None:
+        payload = self._payload()
+        if not payload or not payload.get("ovpn_path"):
+            return None
+        return Path(payload["ovpn_path"])
+
+    def is_source_stale(self) -> bool:
+        """Whether the remembered .ovpn file has changed since it was last imported.
+
+        Profiles saved before source-tracking existed have no recorded path, so
+        there's nothing to compare against — treat those as never stale rather
+        than forcing an unexpected reimport.
+        """
+        payload = self._payload()
+        if not payload or not payload.get("ovpn_path"):
+            return False
+        path = Path(payload["ovpn_path"])
+        if not path.is_file():
+            return False
+        recorded_mtime = payload.get("ovpn_mtime")
+        if recorded_mtime is None:
+            return False
+        return path.stat().st_mtime != recorded_mtime
+
+    def _write(self, payload: dict) -> None:
         encoded = json.dumps(payload).encode()
         _ensure_cred_dir()
         CRED_FILE.write_bytes(_get_fernet().encrypt(encoded))
