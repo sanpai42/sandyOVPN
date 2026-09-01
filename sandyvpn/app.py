@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from datetime import datetime
+from pathlib import Path
 from tkinter import messagebox, ttk
 
 from sandyvpn.errors import CredentialsCorruptedError, OpenVpn3Error
@@ -311,8 +312,9 @@ class SandyVPNApp:
         if self._busy or self._connected:
             return
 
-        def on_imported(config_name: str) -> None:
+        def on_imported(config_name: str, ovpn_path: Path) -> None:
             self.config_var.set(config_name)
+            self._store.record_source(ovpn_path)
             self._append_output(
                 f"Imported config '{config_name}'. Enter username and password, then save credentials.\n"
             )
@@ -410,11 +412,52 @@ class SandyVPNApp:
             return
 
         active_config = self._active_config
+        username = self.username_var.get().strip()
         self._set_busy(True)
         self._append_output(f"\nReconnecting '{active_config}'...\n")
 
         def work() -> None:
-            code, output = self._sessions.reconnect(active_config)
+            def append_line(line: str) -> None:
+                self.root.after(0, lambda: self._append_output(line))
+
+            if self._store.is_source_stale():
+                source_path = self._store.get_source_path()
+                append_line(
+                    f"Config file changed since last import — reimporting '{source_path.name}'...\n"
+                )
+                reimport_code, reimport_output = self._sessions.import_config(
+                    source_path, active_config, on_output=append_line
+                )
+                if reimport_code != 0:
+                    self.root.after(
+                        0,
+                        lambda: messagebox.showerror(
+                            "Reimport failed", reimport_output or f"Exit code {reimport_code}"
+                        ),
+                    )
+                    return
+                self._store.record_source(source_path)
+
+                password = self._store.unlock_password()
+                if not password:
+                    self.root.after(
+                        0,
+                        lambda: messagebox.showerror(
+                            "Reconnect failed",
+                            "Config was reimported but no saved password is available to"
+                            " start a new session.",
+                        ),
+                    )
+                    return
+                try:
+                    code, output = self._sessions.connect(
+                        active_config, username, password, on_output=append_line
+                    )
+                finally:
+                    password = ""
+            else:
+                code, output = self._sessions.reconnect(active_config)
+
             self.root.after(0, lambda: self._append_output(output))
             if code == 0:
                 self.root.after(

@@ -28,7 +28,7 @@ class ConfigImportDialog:
         parent: tk.Tk,
         *,
         sessions: VpnSessionService | None = None,
-        on_imported: Callable[[str], None] | None = None,
+        on_imported: Callable[[str, Path], None] | None = None,
         on_output: Callable[[str], None] | None = None,
     ) -> None:
         self.parent = parent
@@ -198,7 +198,7 @@ class ConfigImportDialog:
             if code == 0:
                 self.dialog.after(
                     0,
-                    lambda: self._finish_success(config_name, output),
+                    lambda: self._finish_success(config_name, ovpn_path, output),
                 )
             else:
                 self.dialog.after(
@@ -218,13 +218,13 @@ class ConfigImportDialog:
             parent=self.dialog,
         )
 
-    def _finish_success(self, config_name: str, output: str) -> None:
+    def _finish_success(self, config_name: str, ovpn_path: Path, output: str) -> None:
         if output and self.on_output is not None:
             self.on_output(output)
         if self.on_output is not None:
             self.on_output(f"Configuration '{config_name}' imported.\n")
         if self.on_imported is not None:
-            self.on_imported(config_name)
+            self.on_imported(config_name, ovpn_path)
         self.dialog.grab_release()
         self.dialog.destroy()
 
